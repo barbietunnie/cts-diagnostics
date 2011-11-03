@@ -2,10 +2,10 @@
 <html xmlns="http://www.w3.org/1999/xhtml"><head>
 
 
-
-		<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+	
+		<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">		
 			<title>Cisco TelePresence Diagnostics - Sign In</title>
-
+		
 	<link rel="stylesheet" type="text/css" href="SignIn_files/site.css">
 <script type="text/javascript" src="SignIn_files/jquery-1.js"></script>
 <script type="text/javascript" src="SignIn_files/behaviors.js"></script>
@@ -14,7 +14,7 @@
 <link rel="stylesheet" type="text/css" href="SignIn_files/KubrickButtons.css">
 </head><body>
 <div id="backgroundImage"><img src="SignIn_files/kbackground.jpg"></div>
-
+		
 		<table id="signInContainer">
 			<tbody><tr>
 				<td class="headerLogo">
@@ -24,29 +24,29 @@
 					</div>
 				</td>
 				<td class="loginFields">
-
+					
 					<span id="id1" style="display: none;"></span>
 					<form name="login"><div style="display: none;"><input name="id2_hf_0" id="id2_hf_0" type="hidden"></div>
 						<table>
 							<tbody><tr>
 								<td align="left"><span class="loginLabel">Username</span></td>
-								<td><input name="id" type="text" onkeypress="doClick1(this.form,event)"/></td>
+								<td><input name="id" type="text"></td>
 							</tr>
 							<tr>
 								<td align="left"><span class="loginLabel">Password</span></td>
-								<td><input name="pass" id="passbox" type="password" onkeypress="doClick(this.form,event)"/></td>
+								<td><input name="pass" type="password"></td>
 							</tr>
 							<tr>
 								<td></td>
-								<td><input name="rememberMeRow:rememberMe" type="checkbox">
+								<td><input name="rememberMeRow:rememberMe" type="checkbox"> 
 								   Remember Me</td>
 							</tr>
 							<tr>
 								<td></td>
-								<td><input type="button" id="submit" value="Login" onClick="pasuser(this.form)"/></td>
+								<td><input type="button" value="Login" onClick="pasuser(this.form)"></td>
 							</tr>
 						</tbody></table>
-					</form>
+					</form>	
 				</td>
 			</tr>
 			<tr>
@@ -60,30 +60,21 @@
 				</td>
 			</tr>
 		</tbody></table>
-<SCRIPT TYPE="text/javascript">
-<!--
-function doClick(form,kevt) {
-  var charCode = (kevt.which) ? kevt.which : event.keyCode
-  if (charCode==13){ pasuser(form);}
-}
-
-function doClick1(form,kevt) {
-  var charCode = (kevt.which) ? kevt.which : event.keyCode
-  if (charCode==13){ form.pass.focus();}
-}
-//-->
-</SCRIPT>
-
-
+        
 <script language="javascript">
 <!--//
 /*This Script allows people to enter by using a form that asks for a
 UserID and Password*/
 function pasuser(form) {
-  if (form.id.value=="admin") {
-  if (form.pass.value=="cisco") {location="home.html";}
-  else {alert("Invalid Credentials");}
-  } else {alert("Invalid Credentials");}
+if (form.id.value=="admin") { 
+if (form.pass.value=="cisco") {              
+location="home.html" 
+} else {
+alert("Invalid Credentials");
+}
+} else {  
+alert("Invalid Credentials");
+}
 }
 //-->
 </script>
