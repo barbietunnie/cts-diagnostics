@@ -9,13 +9,13 @@
 	border: 1px solid #53636A;
 	cursor: pointer;
 	background-color: transparent;
-	background-image: url(../home_files/btn_bg.gif);
+	background-image: url(/images/btn_bg.gif);
 	background-repeat: repeat-x;
 	background-position: 0 -1px;
 }
 .kubrickButtonHover {
-	background: url("btn_bg.gif") repeat-x 0 -43px transparent !important;
+	background: url("/images/btn_bg.gif") repeat-x 0 -43px transparent !important;
 }
 .kubrickButtonClick {
-	background: url("btn_bg.gif") repeat-x 0 -22px transparent !important;
+	background: url("/images/btn_bg.gif") repeat-x 0 -22px transparent !important;
 }
