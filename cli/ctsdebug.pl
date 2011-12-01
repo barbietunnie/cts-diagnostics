@@ -8,9 +8,10 @@
 # Name: 	Cisco TelePresence Diagnostics
 # This program extract a file, reads contents from a directory and list its contents making sure 
 # is a .tar.gz file for TelePresence logs. 
-# This script will detect CTS System information
-# Version 0.1(1003) CLI
+# This script will obtain CTS System information
+# Version 0.1(1004) CLI
 #
+# TODO: Improve parsing and structures
 ################################################################################################
 
 
@@ -46,7 +47,7 @@ sub main {
 
 $global_directory = `pwd`;	#Global for current directory 
 @global_report =      ();   #Global to store extracted info from files and email
-$version = "0.1(1003)";
+$version = "0.1(1004)";
 
 clear_screen();
 print "\n\n\t\tCisco Systems, Inc, TelePresence Infrastructure BU\n";
@@ -220,7 +221,7 @@ sub print_message
 
 sub send_attachment {
 
-	my $host = "";  #Enter a Mailbox hostname
+		my $host = "xmb-sjc-23b.amer.cisco.com";  #Enter a Mailbox hostname
         my ($email,$attach,$casenumber) = @_;
         $name = "Cisco Systems, Inc, CTS Analyzer $version This email contains: Report.txt";
 
@@ -351,7 +352,7 @@ sub extract_serial
 		elsif( $_ =~ m/^Display_Serial=/ )                {
         	         my $displayserialnumber=substr($_,15);
 	                 chomp ($displayserialnumber);
-			  	 	 if ((length($displayserialnumber) eq "11") && ($displayserialnumber =~ m/^Q/)) {#Display Serial should be 11 characters
+			  	 	 if ((length($displayserialnumber) eq "11") && ($displayserialnumber =~ m/^Q/)) {		#Display Serial should be 11 characters
 					 print "\t\tDisplay :    \t $displayserialnumber\n";
 					 &check_serialnumber ("http://serialnumbervalidation.com/63265/cgi-bin/index.cgi",$displayserialnumber);
 				
@@ -501,7 +502,6 @@ sub extract_files
        		print "\n\n\n\n\n\t\tFile extracted in: $outdir";
 			##DEBUG##
 			#print "\t\t\Report and file succesfully extracted in: $outdir \n\n";
-			
 			## DDTS CTS0007 Verify is a valid Telepresence log file	
 			
 			
@@ -589,12 +589,11 @@ sub config_read {
 my ($directory,$file) = @_;
 my $content= "";
 my $openfile = $directory . $file;
-#print "\t\tAccessing $openfile!\n\n";
 open(INPUTFILE, $openfile ) or return 2;
 	while (<INPUTFILE>) {
 	$content = $_;              
 	}
-
+return 0 if $content eq "";
 close INPUTFILE;
 return $content;                    
 }
@@ -627,6 +626,38 @@ return 0;
 
 ################################################################################################
 
+sub read_multipleline {
+
+my ($directory,$file,$pattern,$num_of_lines) = @_;
+my $content = [];
+my $index = 0;
+my $LINEFOUND = "FALSE";
+my $openfile = $directory . $file;
+return 2 if ($num_of_lines < 0 || $num_of_lines > 100);
+
+
+open(INPUTFILE, $openfile ) or return 2;
+        while (my $line = <INPUTFILE>) {
+       	 chomp $line;
+			if ($line =~ m/^$pattern/)                {
+				$LINEFOUND = "TRUE";
+			}	
+
+			if ($LINEFOUND eq "TRUE" && $index <= $num_of_lines) {
+				push (@$content,$line);
+				$index++;
+			}
+		}
+
+close INPUTFILE;
+return $content;
+}
+
+################################################################################################
+
+################################################################################################
+
+
 ###Fix for CTS0007
 
 sub file_check {
@@ -656,7 +687,7 @@ sub file_read {
 
 	my($directory, $codec) = @_;
 	my $report = $directory . "/report.txt";
-	my  $ipaddr   = "";				#/nv/log/capture/Showtech_runtime.txt
+	my $ipaddr   = "";				#/nv/log/capture/Showtech_runtime.txt
 	my $static_ip = "FALSE";		#Fix for: CTS0003 Display 0.0.0.0 for IP address or no IP address when CTS is using DHCP
 	my $validIpAddressRegex = "((([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5]))";
 
@@ -668,39 +699,38 @@ sub file_read {
 	my $str_keycommon1 = 'ERRORS: 3';
 
 
-
 	open (OUTFILE, ">>$report") or die "Can't generate report $!\n";
 
 	%hash = (
-	phoneUI 		=> '/nv/log/capture/Showtech_runtime.txt',
-	TP_MODEL_TEXT 	=> '/nv/log/capture/tsModel.txt',
-	OS_Ver          => '/nv/log/capture/showsysinfo.log',
-	ipdomainname 	=> '/nv/log/capture/Showtech_runtime.txt',
-	netmask 	=> '/nv/log/capture/Showtech_runtime.txt',
-	gatewayip 	=> '/nv/log/capture/Showtech_runtime.txt',
-	ipdns1 		=> '/nv/log/capture/Showtech_runtime.txt',
-	ipdns2 		=> '/nv/log/capture/Showtech_runtime.txt',
-	ethaddr 	=> '/nv/log/capture/Showtech_runtime.txt',
-	eth1addr 	=> '/nv/log/capture/Showtech_runtime.txt',
-	eth2addr 	=> '/nv/log/capture/Showtech_runtime.txt',	
-	$str_key1  	=> '/nv/usr/local/etc/tp-cfg.xml',
-	$str_key2	=> '/nv/usr/local/etc/tp-cfg.xml',
-	$str_key3	=> '/nv/usr/local/etc/phoneui-cfg.xml',
-	$str_key4	=> '/nv/usr/local/etc/tftp-cfg.xml',
-	$str_key5	=> '/nv/usr/local/etc/tftp-cfg.xml',
-
+		phoneUI 		=> '/nv/log/capture/Showtech_runtime.txt',
+		Phone_midlet_status => '/nv/log/capture/showsysinfo.log',
+		Phone_midlet_version => '/nv/log/capture/showsysinfo.log',
+		TP_MODEL_TEXT 	=> '/nv/log/capture/tsModel.txt',
+		OS_Ver          => '/nv/log/capture/showsysinfo.log',
+		ipdomainname 	=> '/nv/log/capture/Showtech_runtime.txt',
+		netmask 	=> '/nv/log/capture/Showtech_runtime.txt',
+		gatewayip 	=> '/nv/log/capture/Showtech_runtime.txt',
+		ipdns1 		=> '/nv/log/capture/Showtech_runtime.txt',
+		ipdns2 		=> '/nv/log/capture/Showtech_runtime.txt',
+		ethaddr 	=> '/nv/log/capture/Showtech_runtime.txt',
+		eth1addr 	=> '/nv/log/capture/Showtech_runtime.txt',
+		eth2addr 	=> '/nv/log/capture/Showtech_runtime.txt',	
+		$str_key1  	=> '/nv/usr/local/etc/tp-cfg.xml',
+		$str_key2	=> '/nv/usr/local/etc/tp-cfg.xml',
+		$str_key3	=> '/nv/usr/local/etc/phoneui-cfg.xml',
+		$str_key4	=> '/nv/usr/local/etc/tftp-cfg.xml',
+		$str_key5	=> '/nv/usr/local/etc/tftp-cfg.xml',
 	);
 
 	%hashcommon = (
         UDI_Hardware_Ver => '/nv/log/capture/showsysinfo.log',
         UDI_Serial 	 => '/nv/log/capture/showsysinfo.log',
-        System_Up_Time   => '/nv/log/capture/showsysinfo.log',
 		Display_Model    => '/nv/log/capture/showsysinfo.log',
         Display_Serial   => '/nv/log/capture/showsysinfo.log',
 		$str_keycommon1	 => '/nv/log/capture/vdspstat.log',
-    	);
+    );
 
-
+	
         if    ($codec == "1") {                                       		# Center codec
 			my @serialnumbers 	= ();
 			my @patterns		= ();
@@ -725,8 +755,7 @@ sub file_read {
 			}
 			close INPUTFILE;
                	
-			               	# Fix issue 2
-				  			$openfile = $directory . "/nv/log/capture/Showtech_runtime.txt";
+				  			$openfile = $directory . "/nv/log/capture/Showtech_runtime.txt";				               	# Fix issue 2
                             open( INPUTFILE, $openfile ) or warn print_message("1","Unable to open file: $openfile $!");
 		                    while (<INPUTFILE>) {
 								if ( $_ =~ m/^ipstatic/)   		{
@@ -779,13 +808,34 @@ sub file_read {
 			                }
 	        			    close INPUTFILE;
 
-			
+
+				# SYSTEM INFO
+				
 				my $cts_man = &config_read($directory,"/nv/state/SRSystemInfo");
-				if ($cts_man == 2) {
+				if ($cts_man == 2 || $cts_man == 0 ) {
 					$cts_man = "Not configured";
 				}
 				push(@patterns,"CTS-Man: " . $cts_man);
 			
+				my $helpdesk = &config_read($directory,"/nv/state/SRHelpDeskNumber");
+				if ($helpdesk == 2 || $helpdesk == 0 ) {
+					$helpdesk = "Not configured";
+				}
+				push(@patterns,"Help Desk: " . $helpdesk);
+				
+								
+				#
+				# System resources
+				#
+				# HDD resources	/nv/log/capture/Showtech_runtime.txt
+				# processor usage 	/nv/log/capture/Showtech_runtime.txt
+				# volume    /nv/usr/local/etc/audio-cfg.conf
+				# uptime 	/nv/log/capture/uptime.txt
+
+
+				my @disk_usage = @{&read_multipleline($directory,"/nv/log/capture/Showtech_runtime.txt","system resources:",5)};
+				my @cpu_usage = @{&read_multipleline($directory,"/nv/log/capture/Showtech_runtime.txt","processor usage:",10)};
+
 				
 			  	##DEBUG##
 			  	
@@ -832,39 +882,46 @@ sub file_read {
                         elsif ($_ =~ m/^phoneUI/ ) {
                         $orderelements[12] = $_;
                         }
-                        elsif ($_ =~ m/^Display_Model/) {
+                        elsif ($_ =~ m/^Phone_midlet_status/ ) {
                         $orderelements[13] = $_;
                         }
-                        elsif ($_ =~ m/^Display_Serial/) {
+                        elsif ($_ =~ m/^Phone_midlet_version/ ) {
                         $orderelements[14] = $_;
+                        }
+                        elsif ($_ =~ m/^Display_Model/) {
+                        $orderelements[15] = $_;
+                        }
+                        elsif ($_ =~ m/^Display_Serial/) {
+                        $orderelements[16] = $_;
                         }
 						elsif ($_ =~ m/$str_key1/) {
 						$_ =~ /\>(.*?)\</;
-						$orderelements[15] = "conferenceRoomName: " . $1 . "\n";
+						$orderelements[17] = "conferenceRoomName: " . $1 . "\n";
                         }
  						elsif ($_ =~ m/$str_key2/) {
 						$_ =~ /\>(.*?)\</;
-                        $orderelements[16] = "tpPhoneNumber: " . $1 . "\n";
+                        $orderelements[18] = "tpPhoneNumber: " . $1 . "\n";
+                        }
+                        elsif ($_ =~ m/^Help/) {
+                        $orderelements[19] = $_;
                         }
  						elsif ($_ =~ m/$str_key3/) {
 						$_ =~ /\>(.*?)\</;
-                        $orderelements[17] = "Timezone: " . $1 . "\n";
+                        $orderelements[20] = "Timezone: " . $1 . "\n";
                         }           
 						elsif ($_ =~ m/^$str_key4/) {
                         $_ =~ /\>(.*?)\</;
-                        $orderelements[18] = "TFTP 1: " . $1 . "\n";
+                        $orderelements[21] = "TFTP 1: " . $1 . "\n";
                         }
 	                	elsif ($_ =~ m/^$str_key5/) {
-                        $_ =~ /\>(.*?)\</;
-                        if (!($1 eq "")){
-						$orderelements[19] = "TFTP 2: " . $1 . "\n";
-                        }
+                      	  $_ =~ /\>(.*?)\</;
+                        	if (!($1 eq "")){
+							$orderelements[22] = "TFTP 2: " . $1 . "\n";
+    	                    }
 						}
 						elsif ($_ =~ m/^CTS-Man:/) {
-                        $orderelements[20] = $_ . "\n";
+                        $orderelements[23] = $_ . "\n";
                         }
-			
-			
 			}
 			
 			
@@ -899,14 +956,11 @@ sub file_read {
                         elsif ($_ =~ m/^UDI_Serial/ ) {
                         $orderelements[2] = $_;
                         }
-                        elsif ($_ =~ m/^System_Up_Time/ ) {
+                        elsif ($_ =~ m/^Display_Model/ ) {
                         $orderelements[3] = $_;
                         }
-                        elsif ($_ =~ m/^Display_Model/ ) {
-                        $orderelements[4] = $_;
-                        }
                         elsif ($_ =~ m/^Display_Serial/ ) {
-                        $orderelements[4] = $_;
+                        $orderelements[3] = $_;
                         }
 
                 	}
@@ -919,8 +973,31 @@ sub file_read {
 				}
 			}
 
-			close OUTFILE;
+			
 			&extract_serial(@serialnumbers);
+			print "\t\tSystem information:\n\n";	
+			push(@global_report,"System information:\n\n");			
+			
+			foreach (@disk_usage) {
+				$_="\t\t$_\n";
+				print "$_";
+				print OUTFILE "$_";
+				push(@global_report,$_);
+			}
+			
+			print "\t\t\n\n";	
+			push(@global_report,"\n\n");			
+			
+			
+			foreach (@cpu_usage) {
+				$_="\t\t$_\n";
+				print "$_";
+				print OUTFILE "$_";
+				push(@global_report,$_);
+			}
+			close OUTFILE;
+						
+
 
 	}
 
@@ -928,7 +1005,7 @@ sub file_read {
 
         elsif   ($codec == "2"){                                        	# Left codec
 			my @serialnumbers = ();
-                	my @orderelements = ();
+            my @orderelements = ();
 			if ( -e $directory . "/logFiles.ts2.local.tar.gz"  )	                {
 			print "\n\n";
 			print "\t\tLeft codec logs found!\n";
@@ -957,14 +1034,11 @@ sub file_read {
                         elsif ($_ =~ m/^UDI_Serial/) {
                         $orderelements[2] = $_;
                         }
-                        elsif ($_ =~ m/^System_Up_Time/) {
+                        elsif ($_ =~ m/^Display_Model/) {
                         $orderelements[3] = $_;
                         }
-                        elsif ($_ =~ m/^Display_Model/) {
-                        $orderelements[4] = $_;
-                        }
                         elsif ($_ =~ m/^Display_Serial/) {
-                        $orderelements[4] = $_;
+                        $orderelements[3] = $_;
                         }
 
                         }
@@ -1017,14 +1091,11 @@ sub file_read {
                         elsif ($_ =~ m/^UDI_Serial/) {
                         $orderelements[2] = $_;
                         }
-                        elsif ($_ =~ m/^System_Up_Time/) {
+                        elsif ($_ =~ m/^Display_Model/) {
                         $orderelements[3] = $_;
                         }
-                        elsif ($_ =~ m/^Display_Model/) {
-                        $orderelements[4] = $_;
-                        }
                         elsif ($_ =~ m/^Display_Serial/) {
-                        $orderelements[4] = $_;
+                        $orderelements[3] = $_;
                         }
 			}
 
@@ -1072,9 +1143,6 @@ sub file_read {
                         }
                         elsif ($_ =~ m/^UDI_Serial/) {
                         $orderelements[2] = $_;
-                        }
-                        elsif ($_ =~ m/^System_Up_Time/) {
-                        $orderelements[3] = $_;
                         }
                         elsif ($_ =~ m/^Display_Model/) {
                         $orderelements[4] = $_;

@@ -1,13 +1,16 @@
 #!/usr/bin/perl -w
-# Gonzalo Gasca 
-# Cisco Systems, Inc
-# Date: October 2010
-# Name: Cisco TelePresence Diagnostics
+#
+################################################################################################
+#
+# Author: 	Gonzalo Gasca 
+# Company: 	Cisco Systems, Inc
+# Date: 	October 2010
+# Name: 	Cisco TelePresence Diagnostics
 # This program extract a file, reads contents from a directory and list its contents making sure 
 # is a .tar.gz file for TelePresence logs. 
 # This script will detect CTS System information
-# Version 1.0(1002)
-
+# Version 0.1(1004) CGI
+#
 ################################################################################################
 
 use Archive::Extract;
@@ -40,9 +43,7 @@ my @global_report =      ();   #Global to store extracted info from files and em
 my $global_directory = "/var/www/html/ctsrepository/";   #Global to store file
 my $global_errors = 0;
 my $global_file = "";
-my $global_version = "0.1(1002)";
-our $global_tacsryesno ="";
-our $global_tacsrnum =0;
+my $global_version = "1.0(1004)";
 
 &main();
 
@@ -52,9 +53,6 @@ our $global_tacsrnum =0;
 
 sub main 
 {
-        $global_tacsryesno="off";
-        $global_tacsrnum="0";
-
 	&debug_log("Main() Starting report",$LOG_LEVEL,0);
 	print "Content-type: text/html\n\n";
 	my $query = new CGI;  
@@ -62,8 +60,6 @@ sub main
 	my $email_address = $query->param("email_address");  
 	my $safe_filename_characters = "a-zA-Z0-9_.-";  
 	my $send = "";
-	$global_tacsryesno = $query->param("tacsr_attach");  
-	$global_tacsrnum = $query->param("tacsrno_attach");  
 	
 	&create_textarea();
 	
@@ -73,24 +69,19 @@ sub main
 	exit (1);  
 	}  
 
+	if (!$email_address)  	{ 
+	&print_message("1","ve(0) Enter valid email address. CTS Analisys will continue!");
+	$send = &validate_email($email_address);
+	}  
+
 	# Remove white spaces from email address in CGI form
 	$email_address =~ s/^\s+//;
 	$email_address =~ s/\s+//g;
-        $email_address =~ s/\s+$//;
+    $email_address =~ s/\s+$//;
 
 	if ($email_address)  	{  
 	$send = &validate_email($email_address);
 	}  
-
-        if (!$email_address)    {
-	 &print_message("1","ve(0) Enter valid email address. CTS Analisys will continue!");
-         if (($global_tacsryesno == "on" ) && ($global_tacsrnum ne "0") && ($global_tacsrnum ne ""))
-	 {
-	  $email_address = "arunku3\@cisco.com";
-	 }
-        $send = &validate_email($email_address);
-        }
-
 
 	my ( $name, $path, $extension ) = fileparse ( $filename, '\..*' );  
 	$filename = $name . $extension;  
@@ -573,6 +564,37 @@ return $content;
 
 ################################################################################################
 
+sub read_multipleline {
+
+my ($directory,$file,$pattern,$num_of_lines) = @_;
+my $content = [];
+my $index = 0;
+my $LINEFOUND = "FALSE";
+my $openfile = $directory . $file;
+return 2 if ($num_of_lines < 0 || $num_of_lines > 100);
+
+
+open(INPUTFILE, $openfile ) or return 2;
+        while (my $line = <INPUTFILE>) {
+       	 chomp $line;
+			if ($line =~ m/^$pattern/)                {
+				$LINEFOUND = "TRUE";
+			}	
+
+			if ($LINEFOUND eq "TRUE" && $index <= $num_of_lines) {
+				push (@$content,$line);
+				$index++;
+			}
+		}
+
+close INPUTFILE;
+return $content;
+}
+
+################################################################################################
+
+################################################################################################
+
 
 sub read_ip_address {
 
@@ -585,12 +607,11 @@ my $str_param3 = $str_param1 . $str_param2;		# Obtain correct global path
 chomp $str_param3;
 open( INPUTINT, $str_param3 ) or warn "$!";
 	while (<INPUTINT>) {
-	if ( $_ =~ m/inet addr:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(.*)Mask:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/ )  {
-	push (@ipaddresses,$1);
-	push (@masks,$3);
-				   
+		if ( $_ =~ m/inet addr:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(.*)Mask:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/ )  {
+		push (@ipaddresses,$1);
+		push (@masks,$3);				   
+		}
 	}
-}
 
 return ($ipaddresses[0],$masks[0]); 
 close INPUTINT;
@@ -606,8 +627,12 @@ sub file_read
 	#debug_log("file_read()",$LOG_LEVEL);
 	my($directory, $codec) = @_;
 	my $textarealine;
-	my $report = $directory . "/report.html";	
-	my $static_ip = "";								#	Fix for: CTS0003 Display 0.0.0.0 for IP address or no IP address when CTS is using DHCP
+	my $report = $directory . "/report.html";
+	my $ipaddr   = "";				#/nv/log/capture/Showtech_runtime.txt
+	my $static_ip = "FALSE";		#Fix for: CTS0003 Display 0.0.0.0 for IP address or no IP address when CTS is using DHCP
+	my $validIpAddressRegex = "((([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5]))";
+	my $ip_found  = "FALSE";
+	
 	my $str_key1 = '   <conferenceRoomName>';
 	my $str_key2 = '   <tpPhoneNumber>';
 	my $str_key3 = '   <timeZone>';
@@ -619,6 +644,8 @@ sub file_read
     
 	%hash = (
 	phoneUI 	=> '/nv/log/capture/Showtech_runtime.txt',
+	Phone_midlet_status => '/nv/log/capture/showsysinfo.log',
+	Phone_midlet_version => '/nv/log/capture/showsysinfo.log',
 	TP_MODEL_TEXT 	=> '/nv/log/capture/tsModel.txt',
 	OS_Ver          => '/nv/log/capture/showsysinfo.log',
 	ipdomainname 	=> '/nv/log/capture/Showtech_runtime.txt',
@@ -630,7 +657,6 @@ sub file_read
 	ethaddr 	=> '/nv/log/capture/Showtech_runtime.txt',
 	eth1addr 	=> '/nv/log/capture/Showtech_runtime.txt',
 	eth2addr 	=> '/nv/log/capture/Showtech_runtime.txt',	
-	ipstatic    => '/nv/log/capture/Showtech_runtime.txt',
 	$str_key1  	=> '/nv/usr/local/etc/tp-cfg.xml',
 	$str_key2	=> '/nv/usr/local/etc/tp-cfg.xml',
 	$str_key3	=> '/nv/usr/local/etc/phoneui-cfg.xml',
@@ -675,17 +701,69 @@ sub file_read
                   			$openfile = $directory . $file;
                             open( INPUTFILE, $openfile ) or warn print_message("1","Unable to open file: $openfile $!");
 		                    while (<INPUTFILE>) {
-		                    ##DEBUG##
-							#print "\t\tDEBUG: Reading elements from File: $_...\n";
-							if ( $_ =~ m/^$pattern/)   		{
-						 	push (@serialnumbers,$_);		
-						 	}
-									
-			}	
-
-				
+								if ( $_ =~ m/^$pattern/)   		{
+						 		push (@serialnumbers,$_);		
+							 	}							
+							}	
                 }
 	            close INPUTFILE;
+				
+				$openfile = $directory . "/nv/log/capture/Showtech_runtime.txt";
+                            open( INPUTFILE, $openfile ) or warn print_message("1","Unable to open file: $openfile $!");
+		                    while (<INPUTFILE>) {
+								if ( $_ =~ m/^ipstatic/)   		{
+									if ($_ =~ m/false/) {    	 # CTS0003 Fix DHCP Problem to populate below fields 
+										$static_ip = "FALSE";    # We are using DHCP, method of obtaining IP is different	#ipstatic=false
+                        			}     
+                        			elsif ($_ =~ m/true/) {    	 # CTS0003 Fix DHCP Problem to populate below fields 
+										$static_ip = "TRUE";
+										
+                        			}     
+							 	}
+							}
+							
+							push (@patterns,"ipstatic=$static_ip\n");
+						 	close INPUTFILE;
+						 	
+						 	# Fix issue 2
+				  			$openfile = $directory . "/nv/log/capture/Showtech_runtime.txt";
+                            open( INPUTFILE, $openfile ) or warn print_message("1","Unable to open file: $openfile $!");
+		                    while (<INPUTFILE>) {
+									if ( $_ =~ m/^ipaddr/ && $static_ip eq "TRUE")   		{
+										push (@patterns,$_);
+									}
+							}
+						 	close INPUTFILE;
+						 	
+						 	# Fix issue 2
+						 	if ($static_ip eq "FALSE") {
+					  			$openfile = $directory . "/nv/log/capture/dhclientinfo.log";
+    	                        open( INPUTFILE, $openfile ) or warn print_message("1","Unable to open file: $openfile $!");
+			                    while (<INPUTFILE>) {
+									if 	($_ =~ m/^CONFIGUREDIP\sis\s$validIpAddressRegex$/ ) {
+										push (@patterns,"ipaddr=$1\n");
+									}
+									}
+						 	close INPUTFILE;
+						 	}
+
+							if ($ip_found eq "FALSE") {    # CTS0003 Fix DHCP Problem to populate below fields 
+								my ($ip,$mask) = &read_ip_address($directory);
+								$orderelements[3] = "ipaddress=". $ip . "\n";
+				                $orderelements[4] = "netmask=" . $mask . "\n";
+				            }        
+				            
+				            
+    						while( my ($pattern, $file) = each (%hashcommon) ) {
+                  			$openfile = $directory . $file;
+                            open( INPUTFILE, $openfile ) or warn "$!";
+			                    while (<INPUTFILE>) {
+									if ( $_ =~ m/^$pattern/)   		{
+						 			push (@serialnumbers,$_);		
+								 	}
+								}	
+			                }
+	        			    close INPUTFILE;
 
 				my $cts_man = &config_read($directory,"/nv/state/SRSystemInfo");
 				if ($cts_man eq "2") {
@@ -693,8 +771,24 @@ sub file_read
 				}
 				push(@patterns,"CTS-Manager: " . $cts_man);
 			
+				my $helpdesk = &config_read($directory,"/nv/state/SRHelpDeskNumber");
+				if ($helpdesk == 2 || $helpdesk == 0 ) {
+					$helpdesk = "Not configured";
+				}
+				push(@patterns,"Help Desk: " . $helpdesk);
+				
 			  	##DEBUG##
-			  	
+			  	#
+				# System resources
+				#
+				# HDD resources	/nv/log/capture/Showtech_runtime.txt
+				# processor usage 	/nv/log/capture/Showtech_runtime.txt
+				# volume    /nv/usr/local/etc/audio-cfg.conf
+				# uptime 	/nv/log/capture/uptime.txt
+				
+				my @disk_usage = @{&read_multipleline($directory,"/nv/log/capture/Showtech_runtime.txt","system resources:",5)};
+				my @cpu_usage = @{&read_multipleline($directory,"/nv/log/capture/Showtech_runtime.txt","processor usage:",10)};
+
 				#print "\t\tDEBUG: Ordering elements...\n";
 				foreach (@patterns)        {
 						##DEBUG##
@@ -738,36 +832,45 @@ sub file_read
                         elsif ($_ =~ m/^phoneUI/ ) {
                         $orderelements[12] = $_;
                         }
-                        elsif ($_ =~ m/^Display_Model/) {
+                        elsif ($_ =~ m/^Phone_midlet_status/ ) {
                         $orderelements[13] = $_;
                         }
-                        elsif ($_ =~ m/^Display_Serial/) {
+                        elsif ($_ =~ m/^Phone_midlet_version/ ) {
                         $orderelements[14] = $_;
+                        }
+                        elsif ($_ =~ m/^Display_Model/) {
+                        $orderelements[15] = $_;
+                        }
+                        elsif ($_ =~ m/^Display_Serial/) {
+                        $orderelements[16] = $_;
                         }
 						elsif ($_ =~ m/$str_key1/) {
 						$_ =~ /\>(.*?)\</;
-						$orderelements[15] = "conferenceRoomName: " . $1 . "\n";
+						$orderelements[17] = "conferenceRoomName: " . $1 . "\n";
                         }
  						elsif ($_ =~ m/$str_key2/) {
 						$_ =~ /\>(.*?)\</;
-                        $orderelements[16] = "tpPhoneNumber: " . $1 . "\n";
+                        $orderelements[18] = "tpPhoneNumber: " . $1 . "\n";
+                        }
+                        elsif ($_ =~ m/^Help/) {
+                        $orderelements[19] = $_;
                         }
  						elsif ($_ =~ m/$str_key3/) {
 						$_ =~ /\>(.*?)\</;
-                        $orderelements[17] = "Timezone: " . $1 . "\n";
+                        $orderelements[20] = "Timezone: " . $1 . "\n";
                         }           
 						elsif ($_ =~ m/^$str_key4/) {
                         $_ =~ /\>(.*?)\</;
-                        $orderelements[18] = "TFTP 1: " . $1 . "\n";
+                        $orderelements[21] = "TFTP 1: " . $1 . "\n";
                         }
 	                	elsif ($_ =~ m/^$str_key5/) {
-                        $_ =~ /\>(.*?)\</;
-                        if (!($1 eq "")){
-						$orderelements[19] = "TFTP 2: " . $1 . "\n";
-                        }
+                       	 $_ =~ /\>(.*?)\</;
+                        	if (!($1 eq "")){
+							$orderelements[22] = "TFTP 2: " . $1 . "\n";
+    	                    }
 						}
 						elsif ($_ =~ m/^CTS-Manager:/) {
-                        $orderelements[20] = $_ . "\n";
+                        $orderelements[23] = $_ . "\n";
                         }
 			
 			
@@ -785,13 +888,8 @@ sub file_read
 					}
 				}	
 				
-				
-			if ($orderelements[2] =~ m/false/) {    # CTS0003 Fix DHCP Problem to populate below fields 
-				my ($ip,$mask) = &read_ip_address($directory);
-				$orderelements[3] = "ipaddress=". $ip . "\n";
-                $orderelements[4] = "netmask=" . $mask . "\n";
-            }        
-        
+		
+	        
             &create_html_report($report,0); #open file
             &create_html_report($report,1,0,"Center codec"); 
         
@@ -814,9 +912,6 @@ sub file_read
                         elsif ($_ =~ m/^UDI_Serial/ ) {
                         $orderelements[2] = $_;
                         }
-                        elsif ($_ =~ m/^System_Up_Time/ ) {
-                        $orderelements[3] = $_;
-                        }
                         elsif ($_ =~ m/^Display_Model/ ) {
                         $orderelements[4] = $_;
                         }
@@ -833,8 +928,29 @@ sub file_read
 				}
 			}
 
+
 			close OUTFILE;
 			&extract_serial(@serialnumbers);
+			
+			push(@global_report,"\t\tSystem information:\n\n");			
+			&create_html_report($report,1,1,"System information:");
+			
+			foreach (@disk_usage) {
+				$_="\t\t$_\n";
+				print OUTFILE "$_";
+				&create_html_report($report,1,1,"$_");
+				push(@global_report,$_);
+			}
+			
+			push(@global_report,"\n\n");						
+			
+			foreach (@cpu_usage) {	
+				$_="\t\t$_\n";
+				print OUTFILE "$_";
+				&create_html_report($report,1,1,"$_");
+				push(@global_report,$_);
+			}
+			
 
 	}
 
@@ -869,9 +985,6 @@ sub file_read
                         }
                         elsif ($_ =~ m/^UDI_Serial/) {
                         $orderelements[2] = $_;
-                        }
-                        elsif ($_ =~ m/^System_Up_Time/) {
-                        $orderelements[3] = $_;
                         }
                         elsif ($_ =~ m/^Display_Model/) {
                         $orderelements[4] = $_;
@@ -1033,29 +1146,20 @@ sub send_attachment
         my $smtp = Net::SMTP->new($host,Timeout => 15,Debug => 1);
       
         $smtp->mail("ctsanalyzer\@cisco.com"); #FROM
-        if (($global_tacsryesno == "on" ) && ($global_tacsrnum ne "0") && ($global_tacsrnum ne "") && ($email ne "arunku3\@cisco.com") && ($email ne ""))    { #We want to attach to a case number
- 
-                $smtp->recipient($email,"arunku3\@cisco.com",{ Notify => ['FAILURE','DELAY'], SkipBad => 1 });
-                $casenumber = $global_tacsrnum;
+        if (($attach eq  "1") && ($casenumber ne "0")){ #We want to attach to a case number
+                
+                $smtp->recipient($email,"email-in\@cisco.com",{ Notify => ['FAILURE','DELAY'], SkipBad => 1 });
+                
         }
-	else
-	{
-	 if(($global_tacsryesno == "on" ) && ($global_tacsrnum ne "0") && ($global_tacsrnum ne "") && ($email eq "arunku3\@cisco.com"))
-	 {
-	  $smtp->to($email);
-	  $casenumber = $global_tacsrnum; 
-	 }
-	 else 
- 	 {
-	  $smtp->to($email);
-	  $casenumber = "Your Report is ready! ";
-         }
+        else {
+                $smtp->to($email);
+                $casenumber = "Your Report is ready! ";
         }
-
+        
         $smtp->data();
         $smtp->datasend("From: ctsanalyzer\@cisco.com\n");
         $smtp->datasend("To: $email\n");
-        $smtp->datasend("Subject: [SR\# $casenumber] CTS Analyzer Report\n");
+        $smtp->datasend("Subject: $casenumber CTS Analyzer Report\n");
         $smtp->datasend("MIME-Version: 1.0\n");
         $smtp->datasend("$name\n");
         
@@ -1065,16 +1169,12 @@ sub send_attachment
 		$smtp->datasend("$_");
                                         }
         }
-	
-	
 		$smtp->datasend();
    		$smtp-> dataend();                                                #We finish sending email
     	$smtp-> send();
     	$smtp-> quit();
 
 print_message("0","Email sent to $email...!");
-$global_tacsryesno="off";
-$global_tacsrnum="0";
 return 0;
 }
 
@@ -1090,9 +1190,9 @@ sub validate_email
         return 0;        
         }
         else {
-         print_message("1","(ve0) Invalid email address. CTS Analisys will continue!");
-         $global_errors++;
-         return 1;
+        print_message("1","(ve0) Invalid email address. CTS Analisys will continue!");
+        $global_errors++;
+        return 1;
         }
 }
 
@@ -1174,7 +1274,7 @@ sub check_serialnumber
 {
 	my($url,$serialnumber,$devicetype) = @_;
 	my $userAgent = LWP::UserAgent->new(agent => 'perl post');
-	#$userAgent->proxy(['http', 'ftp'], 'http://128.107.241.169:80');  ### Enter your PROXY Here
+	$userAgent->proxy(['http', 'ftp'], 'http://128.107.241.169:80');  ### Enter your PROXY Here
 	$userAgent->timeout(10); 										  ### Add delay
 	my $message = "act=process&checklist=" . $serialnumber . "&submit=Submit";
 	my $response = $userAgent->request(POST $url,Content_Type => 'application/x-www-form-urlencoded',Content => $message);
@@ -1199,8 +1299,8 @@ my $type = $deviceMatrix {lc $devicetype} || "Unknown";
 		}
 		else
 		{
-		my $code = $response->code();
-		print_message("1","HTTP Error: ($code) No Internet Connectivity. Unable to verify Serial Number: $serialnumber");
+		 my $code = $response->code();
+         print_message("1","HTTP Error: $code .No Internet Connectivity");
+		 $global_errors++;
 		}
 }	
-
