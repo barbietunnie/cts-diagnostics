@@ -9,7 +9,7 @@
 # This program extract a file, reads contents from a directory and list its contents making sure 
 # is a .tar.gz file for TelePresence logs. 
 # This script will detect CTS System information
-# Version 0.1(1002) CGI
+# Version 0.1(1003) CGI
 #
 ################################################################################################
 
@@ -43,7 +43,7 @@ my @global_report =      ();   #Global to store extracted info from files and em
 my $global_directory = "/var/www/html/ctsrepository/";   #Global to store file
 my $global_errors = 0;
 my $global_file = "";
-my $global_version = "1.0(1002)";
+my $global_version = "1.0(1003)";
 
 &main();
 
@@ -576,12 +576,11 @@ my $str_param3 = $str_param1 . $str_param2;		# Obtain correct global path
 chomp $str_param3;
 open( INPUTINT, $str_param3 ) or warn "$!";
 	while (<INPUTINT>) {
-	if ( $_ =~ m/inet addr:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(.*)Mask:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/ )  {
-	push (@ipaddresses,$1);
-	push (@masks,$3);
-				   
+		if ( $_ =~ m/inet addr:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(.*)Mask:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/ )  {
+		push (@ipaddresses,$1);
+		push (@masks,$3);				   
+		}
 	}
-}
 
 return ($ipaddresses[0],$masks[0]); 
 close INPUTINT;
@@ -597,8 +596,12 @@ sub file_read
 	#debug_log("file_read()",$LOG_LEVEL);
 	my($directory, $codec) = @_;
 	my $textarealine;
-	my $report = $directory . "/report.html";	
-	my $static_ip = "";								#	Fix for: CTS0003 Display 0.0.0.0 for IP address or no IP address when CTS is using DHCP
+	my $report = $directory . "/report.html";
+	my $ipaddr   = "";				#/nv/log/capture/Showtech_runtime.txt
+	my $static_ip = "FALSE";		#Fix for: CTS0003 Display 0.0.0.0 for IP address or no IP address when CTS is using DHCP
+	my $validIpAddressRegex = "((([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5]))";
+	my $ip_found  = "FALSE";
+	
 	my $str_key1 = '   <conferenceRoomName>';
 	my $str_key2 = '   <tpPhoneNumber>';
 	my $str_key3 = '   <timeZone>';
@@ -621,7 +624,6 @@ sub file_read
 	ethaddr 	=> '/nv/log/capture/Showtech_runtime.txt',
 	eth1addr 	=> '/nv/log/capture/Showtech_runtime.txt',
 	eth2addr 	=> '/nv/log/capture/Showtech_runtime.txt',	
-	ipstatic    => '/nv/log/capture/Showtech_runtime.txt',
 	$str_key1  	=> '/nv/usr/local/etc/tp-cfg.xml',
 	$str_key2	=> '/nv/usr/local/etc/tp-cfg.xml',
 	$str_key3	=> '/nv/usr/local/etc/phoneui-cfg.xml',
@@ -666,17 +668,71 @@ sub file_read
                   			$openfile = $directory . $file;
                             open( INPUTFILE, $openfile ) or warn print_message("1","Unable to open file: $openfile $!");
 		                    while (<INPUTFILE>) {
-		                    ##DEBUG##
-							#print "\t\tDEBUG: Reading elements from File: $_...\n";
-							if ( $_ =~ m/^$pattern/)   		{
-						 	push (@serialnumbers,$_);		
-						 	}
-									
-			}	
-
-				
+								if ( $_ =~ m/^$pattern/)   		{
+						 		push (@serialnumbers,$_);		
+							 	}							
+							}	
                 }
 	            close INPUTFILE;
+				
+				$openfile = $directory . "/nv/log/capture/Showtech_runtime.txt";
+                            open( INPUTFILE, $openfile ) or warn print_message("1","Unable to open file: $openfile $!");
+		                    while (<INPUTFILE>) {
+								if ( $_ =~ m/^ipstatic/)   		{
+									if ($_ =~ m/false/) {    	 # CTS0003 Fix DHCP Problem to populate below fields 
+										$static_ip = "FALSE";    # We are using DHCP, method of obtaining IP is different	#ipstatic=false
+                        			}     
+                        			elsif ($_ =~ m/true/) {    	 # CTS0003 Fix DHCP Problem to populate below fields 
+										$static_ip = "TRUE";
+										
+                        			}     
+							 	}
+							}
+							
+							push (@patterns,"ipstatic=$static_ip\n");
+						 	close INPUTFILE;
+						 	
+						 	# Fix issue 2
+				  			$openfile = $directory . "/nv/log/capture/Showtech_runtime.txt";
+                            open( INPUTFILE, $openfile ) or warn print_message("1","Unable to open file: $openfile $!");
+		                    while (<INPUTFILE>) {
+									if ( $_ =~ m/^ipaddr/ && $static_ip eq "TRUE")   		{
+										push (@patterns,$_);
+									}
+							}
+							
+						 	close INPUTFILE;
+						 	
+						 	# Fix issue 2
+						 	if ($static_ip eq "FALSE") {
+					  			$openfile = $directory . "/nv/log/capture/dhclientinfo.log";
+    	                        open( INPUTFILE, $openfile ) or warn print_message("1","Unable to open file: $openfile $!");
+			                    while (<INPUTFILE>) {
+									if 	($_ =~ m/^CONFIGUREDIP\sis\s$validIpAddressRegex$/ ) {
+										push (@patterns,"ipaddr=$1\n");
+									}
+								}
+					
+						 	close INPUTFILE;
+						 	}
+
+							if ($ip_found eq "FALSE") {    # CTS0003 Fix DHCP Problem to populate below fields 
+								my ($ip,$mask) = &read_ip_address($directory);
+								$orderelements[3] = "ipaddress=". $ip . "\n";
+				                $orderelements[4] = "netmask=" . $mask . "\n";
+				            }        
+				            
+				            
+    						while( my ($pattern, $file) = each (%hashcommon) ) {
+                  			$openfile = $directory . $file;
+                            open( INPUTFILE, $openfile ) or warn "$!";
+			                    while (<INPUTFILE>) {
+									if ( $_ =~ m/^$pattern/)   		{
+						 			push (@serialnumbers,$_);		
+								 	}
+								}	
+			                }
+	        			    close INPUTFILE;
 
 				my $cts_man = &config_read($directory,"/nv/state/SRSystemInfo");
 				if ($cts_man eq "2") {
@@ -776,13 +832,7 @@ sub file_read
 					}
 				}	
 				
-				
-			if ($orderelements[2] =~ m/false/) {    # CTS0003 Fix DHCP Problem to populate below fields 
-				my ($ip,$mask) = &read_ip_address($directory);
-				$orderelements[3] = "ipaddress=". $ip . "\n";
-                $orderelements[4] = "netmask=" . $mask . "\n";
-            }        
-        
+				        
             &create_html_report($report,0); #open file
             &create_html_report($report,1,0,"Center codec"); 
         
@@ -1003,7 +1053,7 @@ sub file_read
 sub send_attachment 
 {
 
-		my $host = "xmb-sjc-23b.amer.cisco.com";  #Enter a Mailbox hostname
+		my $host = "";  #Enter a Mailbox hostname
         my ($email,$attach,$casenumber) = @_;
         my $name = "Cisco Systems, Inc, CTS Analyzer. This email contains your Report";
 
@@ -1035,7 +1085,7 @@ sub send_attachment
         }
         
         $smtp->data();
-        $smtp->datasend("From: ctsnalyzer\@cisco.com\n");
+        $smtp->datasend("From: ctsanalyzer\@cisco.com\n");
         $smtp->datasend("To: $email\n");
         $smtp->datasend("Subject: $casenumber CTS Analyzer Report\n");
         $smtp->datasend("MIME-Version: 1.0\n");
