@@ -2,15 +2,16 @@
 #
 ################################################################################################
 #
-# Author: 	Gonzalo Gasca 
+# Author: 	Gonzalo Gasca Meza
 # Company: 	Cisco Systems, Inc
-# Date: 	October 2010
+# Date: 	October 2011
 # Name: 	Cisco TelePresence Diagnostics
 # This program extract a file, reads contents from a directory and list its contents making sure 
 # is a .tar.gz file for TelePresence logs. 
 # This script will detect CTS System information
-# Version 0.1(1004) CGI
+# Version 0.1(10041) CGI
 #
+# TODO: Improve parsing and structures
 ################################################################################################
 
 use Archive::Extract;
@@ -43,7 +44,8 @@ my @global_report =      ();   #Global to store extracted info from files and em
 my $global_directory = "/var/www/html/ctsrepository/";   #Global to store file
 my $global_errors = 0;
 my $global_file = "";
-my $global_version = "1.0(1004)";
+my  $global_version = "1.0(10041)";
+
 
 &main();
 
@@ -51,13 +53,20 @@ my $global_version = "1.0(1004)";
 # Main program
 ################################################################################################
 
-sub main 
-{
+sub main {
+
 	&debug_log("Main() Starting report",$LOG_LEVEL,0);
 	print "Content-type: text/html\n\n";
 	my $query = new CGI;  
-	my $filename = $query->param("cts_file");  
-	my $email_address = $query->param("email_address");  
+	my $filename	  = "";
+	my $email_address = "";
+	my $tacsryesno	  = "";
+	my $tacsrnum	  = "";
+	$filename 			= $query->param("cts_file");  
+	$email_address 		= $query->param("email_address");  
+	$tacsryesno 		= $query->param("tacsr_attach");  
+	$tacsrnum 			= $query->param("tacsrno_attach");  
+	my $attachsr = 0;
 	my $safe_filename_characters = "a-zA-Z0-9_.-";  
 	my $send = "";
 	
@@ -83,6 +92,13 @@ sub main
 	$send = &validate_email($email_address);
 	}  
 
+	&debug_log("DEBUG: Main() CGI INPUT FILE: $filename EMAIL: $email_address ATTACH: $tacsryesno SR: $tacsrnum",$LOG_LEVEL,0);
+	if (($tacsryesno eq "on" ) && ($tacsrnum ne "0") && ($tacsrnum ne "")) {
+		$attachsr = 1;
+		&debug_log("DEBUG: Main() Attaching report to Service Request: ATTACH: $attachsr",$LOG_LEVEL,0);
+
+	}
+    
 	my ( $name, $path, $extension ) = fileparse ( $filename, '\..*' );  
 	$filename = $name . $extension;  
 	$filename =~ tr/ /_/;  
@@ -111,6 +127,7 @@ close UPLOADFILE;
 &print_message("0","File upload completed $filename");
 &extract_files($global_directory,$filename);
 &send_attachment($email_address,"0","0") if (!$send);
+&send_attachment("email-in\@cisco.com","1",$tacsrnum) if ($attachsr == 1);
 &print_message("0","TelePresence Analysis completed");
 &print_errors($global_errors);
 &create_downloadbutton($global_file) if (!$global_file eq "");
@@ -195,7 +212,7 @@ my($message, $level,$operation) = @_;
 my ($sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst) = localtime(time);
 my $stamp = sprintf ("%4d/%02d/%02d %02d:%02d:%02d", $year+1900, $mon+1, $mday, $hour, $min, $sec);
 
-open (DEBUGLOG,">>/var/www/html/ctsrepository/logs/ctsapplication.log") or die print "Unable to open ctsapplication.log";
+open (DEBUGLOG,">>/var/www/html/ctsrepository/logs/ctsapplication.log") or die print "ERROR: Unable to open ctsapplication.log";
 print DEBUGLOG "$stamp $message\n" if ($level eq 1);
 
 if ($operation == 1) {
@@ -555,7 +572,7 @@ open(INPUTFILE, $openfile ) or return "2";
 	while (<INPUTFILE>) {
 	$content = $_;              
 	}
-
+return 0 if $content eq "";
 close INPUTFILE;
 return $content;                    
 }
@@ -772,10 +789,12 @@ sub file_read
 				push(@patterns,"CTS-Manager: " . $cts_man);
 			
 				my $helpdesk = &config_read($directory,"/nv/state/SRHelpDeskNumber");
-				if ($helpdesk == 2 || $helpdesk == 0 ) {
+				if ($helpdesk eq "2" || $helpdesk eq "0" || $helpdesk eq "__NULL__"  ) {
 					$helpdesk = "Not configured";
 				}
 				push(@patterns,"Help Desk: " . $helpdesk);
+				
+			
 				
 			  	##DEBUG##
 			  	#
@@ -789,6 +808,11 @@ sub file_read
 				my @disk_usage = @{&read_multipleline($directory,"/nv/log/capture/Showtech_runtime.txt","system resources:",5)};
 				my @cpu_usage = @{&read_multipleline($directory,"/nv/log/capture/Showtech_runtime.txt","processor usage:",10)};
 
+				my $uptime = &config_read($directory,"/nv/log/capture/uptime.txt");
+				if ($uptime eq "2" || $uptime eq "0") {
+					$uptime = "ERROR: Invalid Uptime: ($uptime) Open /nv/log/capture/uptime.txt manually";
+				}
+				
 				#print "\t\tDEBUG: Ordering elements...\n";
 				foreach (@patterns)        {
 						##DEBUG##
@@ -853,7 +877,7 @@ sub file_read
                         $orderelements[18] = "tpPhoneNumber: " . $1 . "\n";
                         }
                         elsif ($_ =~ m/^Help/) {
-                        $orderelements[19] = $_;
+                        $orderelements[19] = $_ . "\n";
                         }
  						elsif ($_ =~ m/$str_key3/) {
 						$_ =~ /\>(.*?)\</;
@@ -928,16 +952,15 @@ sub file_read
 				}
 			}
 
+			push(@global_report,"\tSystem information:\n\n");			
+			&create_html_report($report,1,0,"System information"); 
 
-			close OUTFILE;
-			&extract_serial(@serialnumbers);
 			
-			push(@global_report,"\t\tSystem information:\n\n");			
-			&create_html_report($report,1,1,"System information:");
+			&create_html_report($report,1,1,"uptime: $uptime");
+			push(@global_report,"\tUptime: $uptime\n");
 			
 			foreach (@disk_usage) {
-				$_="\t\t$_\n";
-				print OUTFILE "$_";
+				$_="\t$_\n";
 				&create_html_report($report,1,1,"$_");
 				push(@global_report,$_);
 			}
@@ -945,13 +968,12 @@ sub file_read
 			push(@global_report,"\n\n");						
 			
 			foreach (@cpu_usage) {	
-				$_="\t\t$_\n";
-				print OUTFILE "$_";
+				$_="\t$_\n";
 				&create_html_report($report,1,1,"$_");
 				push(@global_report,$_);
 			}
 			
-
+	&extract_serial(@serialnumbers);
 	}
 
 
@@ -963,7 +985,7 @@ sub file_read
 			print_message("0","Left codec files found");
             extract_secondary ("2",$directory);			#Unzip ts2.local log files
 			&create_html_report($report,1,0,"Left codec");
-			push(@global_report,"Left codec\n");
+			push(@global_report,"\nLeft codec\n");
 
 	                while( my ($pattern, $file) = each (%hashcommon) ) {
                        	        $openfile = $directory . "/logFiles.ts2.local" . $file;
@@ -1002,7 +1024,6 @@ sub file_read
                         	}
                         }
 
-			close OUTFILE;
 			&extract_serial(@serialnumbers);
          
 			}	
@@ -1015,7 +1036,7 @@ sub file_read
 			print_message("0","Right codec files found");
 	        extract_secondary ("3",$directory);
 			&create_html_report($report,1,0,"Right codec");	
-			push(@global_report,"Right codec\n");
+			push(@global_report,"\nRight codec\n");
 	        
 		        while( my ($pattern, $file) = each (%hashcommon) ) {
 	             	        $openfile = $directory . "/logFiles.ts3.local" . $file;
@@ -1054,7 +1075,6 @@ sub file_read
                         	}
                         }
 
-                        close OUTFILE;
 						&extract_serial(@serialnumbers);
 			
  
@@ -1067,7 +1087,7 @@ sub file_read
 		       	print_message("0","Presentation codec files found");
 				extract_secondary ("4",$directory);
 				&create_html_report($report,1,0,"Presentation codec");	
-				push(@global_report,"Presentation codec\n");
+				push(@global_report,"\nPresentation codec\n");
 
  	         	
 			while( my ($pattern, $file) = each (%hashcommon) ) {
@@ -1133,6 +1153,8 @@ sub send_attachment
         return 1;        
         }
 		
+		&debug_log("DEBUG: send_attachment() EMAIL: $email ATTACH: $attach SR: $casenumber",$LOG_LEVEL,0);
+		
 		for my $target ( get_mx($host) ) {
 			if ($target eq 1){ ## Error
 				print_message("2","Email server unreachable!");
@@ -1146,15 +1168,15 @@ sub send_attachment
         my $smtp = Net::SMTP->new($host,Timeout => 15,Debug => 1);
       
         $smtp->mail("ctsanalyzer\@cisco.com"); #FROM
-        if (($attach eq  "1") && ($casenumber ne "0")){ #We want to attach to a case number
-                
-                $smtp->recipient($email,"email-in\@cisco.com",{ Notify => ['FAILURE','DELAY'], SkipBad => 1 });
-                
+        if (($attach == 1) && ($casenumber ne "0")){ #We want to attach to a case number
+        &debug_log("DEBUG: send_attachment() Attaching report to SR: EMAIL: $email ATTACH: $attach SR: $casenumber",$LOG_LEVEL,0);
         }
         else {
                 $smtp->to($email);
                 $casenumber = "Your Report is ready! ";
         }
+        
+      	&debug_log("DEBUG: send_attachment() EMAIL: $email ATTACH: $attach SR: $casenumber",$LOG_LEVEL,0);
         
         $smtp->data();
         $smtp->datasend("From: ctsanalyzer\@cisco.com\n");
@@ -1174,7 +1196,8 @@ sub send_attachment
     	$smtp-> send();
     	$smtp-> quit();
 
-print_message("0","Email sent to $email...!");
+print_message("0","Email attach to SR $casenumber: !") if $attach == 1;
+print_message("0","Email sent to $email...!") if $attach == 0;
 return 0;
 }
 
@@ -1185,7 +1208,7 @@ return 0;
 sub validate_email 
 {		
 		my $email = shift || return 1;
-		&print_message("1","Verifying email: '$email'");
+		&print_message("0","Verifying email: '$email'");
 	    if($email =~ /^([a-zA-Z0-9])+([\.a-zA-Z0-9_-])*@([a-zA-Z0-9_-])+(\.[a-zA-Z0-9_-]+)+/) {
         return 0;        
         }
