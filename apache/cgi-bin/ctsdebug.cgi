@@ -1,4 +1,4 @@
-#!c:/bin/perl/bin/perl.exe -w
+#!/usr/bin/perl -w
 #
 ################################################################################################
 #
@@ -40,10 +40,10 @@ $CGI::POST_MAX = 1024 * 15000;
 # Main program
 ################################################################################################
 
-my @global_report =      ();   #Global to store extracted info from files and email
-my $global_directory = "/var/www/html/ctsrepository/";   #Global to store file
-my $global_errors = 0;
-my $global_file = "";
+my  @global_report =      ();   #Global to store extracted info from files and email
+my  $global_directory = "/var/www/html/ctsrepository/";   #Global to store file
+my  $global_errors = 0;
+my  $global_file = "";
 my  $global_version = "1.0(10041)";
 
 
@@ -57,7 +57,7 @@ sub main {
 
 	&debug_log("Main() Starting report",$LOG_LEVEL,0);
 	print "Content-type: text/html\n\n";
-	my $query = new CGI;  
+	my $query = new CGI;
 	my $filename	  = "";
 	my $email_address = "";
 	my $tacsryesno	  = "";
@@ -569,9 +569,9 @@ my $content= "";
 my $openfile = $directory . $file;
 open(INPUTFILE, $openfile ) or return "2";
 
-	while (<INPUTFILE>) {
+while (<INPUTFILE>) {
 	$content = $_;              
-	}
+}
 return 0 if $content eq "";
 close INPUTFILE;
 return $content;                    
@@ -796,18 +796,18 @@ sub file_read
 				
 			
 				
-			  	##DEBUG##
+			  	#	#DEBUG##
 			  	#
-				# System resources
+				# 	System resources
 				#
-				# HDD resources	/nv/log/capture/Showtech_runtime.txt
-				# processor usage 	/nv/log/capture/Showtech_runtime.txt
-				# volume    /nv/usr/local/etc/audio-cfg.conf
-				# uptime 	/nv/log/capture/uptime.txt
+				# 	HDD resources	/nv/log/capture/Showtech_runtime.txt
+				# 	processor usage 	/nv/log/capture/Showtech_runtime.txt
+				# 	volume    /nv/usr/local/etc/audio-cfg.conf
+				# 	uptime 	/nv/log/capture/uptime.txt
 				
 				my @disk_usage = @{&read_multipleline($directory,"/nv/log/capture/Showtech_runtime.txt","system resources:",5)};
 				my @cpu_usage = @{&read_multipleline($directory,"/nv/log/capture/Showtech_runtime.txt","processor usage:",10)};
-
+				
 				my $uptime = &config_read($directory,"/nv/log/capture/uptime.txt");
 				if ($uptime eq "2" || $uptime eq "0") {
 					$uptime = "ERROR: Invalid Uptime: ($uptime) Open /nv/log/capture/uptime.txt manually";
@@ -951,14 +951,14 @@ sub file_read
 				push(@global_report,$_);
 				}
 			}
-
+			
 			push(@global_report,"\tSystem information:\n\n");			
 			&create_html_report($report,1,0,"System information"); 
-
+			
 			
 			&create_html_report($report,1,1,"uptime: $uptime");
 			push(@global_report,"\tUptime: $uptime\n");
-			
+						
 			foreach (@disk_usage) {
 				$_="\t$_\n";
 				&create_html_report($report,1,1,"$_");
@@ -1166,7 +1166,7 @@ sub send_attachment
 		## Fix CTS0008, Retry for 15 seconds and debug information, need to catch error before crash
 		## Create a new SMTP object
         my $smtp = Net::SMTP->new($host,Timeout => 15,Debug => 1);
-      
+
         $smtp->mail("ctsanalyzer\@cisco.com"); #FROM
         if (($attach == 1) && ($casenumber ne "0")){ #We want to attach to a case number
         &debug_log("DEBUG: send_attachment() Attaching report to SR: EMAIL: $email ATTACH: $attach SR: $casenumber",$LOG_LEVEL,0);
@@ -1175,7 +1175,7 @@ sub send_attachment
                 $smtp->to($email);
                 $casenumber = "Your Report is ready! ";
         }
-        
+
       	&debug_log("DEBUG: send_attachment() EMAIL: $email ATTACH: $attach SR: $casenumber",$LOG_LEVEL,0);
         
         $smtp->data();
@@ -1185,11 +1185,11 @@ sub send_attachment
         $smtp->datasend("MIME-Version: 1.0\n");
         $smtp->datasend("$name\n");
         
-	foreach (@global_report) {
-		if( defined $_ )        {
-		$_="\t\t$_";
-		$smtp->datasend("$_");
-                                        }
+		foreach (@global_report) {
+			if( defined $_ )        {
+			$_="\t\t$_";
+			$smtp->datasend("$_");
+            }
         }
 		$smtp->datasend();
    		$smtp-> dataend();                                                #We finish sending email
